@@ -1,0 +1,146 @@
+---
+title: "Project"
+author: "Dhaen Alkaabi"
+output: html_document
+date: "2023-11-08"
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(openxlsx)
+library(tidyverse)
+library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+draft_data <- read.xlsx("C:\\STAT240\\data\\draft_picks.xlsx")
+names(draft_picks)
+
+
+```
+
+> Research Question 1: Do draft pick number and various player attributes, such as height, weight, and speed, exhibit a significant correlation towards a player's success in the NFL? And if so, which positions have the strongest and weakest correlations?
+
+```{r}
+#Data Cleaning and Wrangling
+
+draft_data_clean <- draft_data %>%
+  select(season, pick, position, rush_yards, rec_yards, def_sacks) %>%
+  mutate(season = as.numeric(season)) %>% 
+  filter(!is.na(pick)) %>%
+  na.omit() 
+```
+
+> The first segment of the code is dedicated to preparing the dataset for analysis. It focuses on selecting the relevant columns, converting the season to a numeric format, filtering out rows with missing pick values, and removing rows with any NA values. This step is crucial as it lays the foundation for accurate and meaningful analysis. By ensuring the data is clean and relevant, this process directly supports the investigation of the research question, particularly in examining the relationship between draft pick numbers and player success metrics. Clean and well-structured data is vital for deriving valid conclusions about how draft picks relate to player performance in the NFL.
+
+
+
+```{r}
+#Data Visualization
+
+ggplot(draft_data_clean, aes(x = pick, y = rush_yards)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~position) +
+  theme_minimal() +
+  labs(title = "Draft Pick vs Rush Yards by Position")
+```
+
+> The plot is a collection of scatterplots, each representing a different position in the NFL, comparing draft pick numbers (x-axis) to rushing yards (y-axis). The points represent individual players, and the blue lines show the trend of rushing yards against draft picks within each position. Positions like DB and WR show a slight negative trend, suggesting higher draft picks typically have more rushing yards. Most positions, especially non-rushing ones like T and DT, show little to no trend, indicating draft pick number doesn't strongly correlate with rushing yards for those positions.
+
+> This code creates a scatter plot with a linear regression line to visually explore the relationship between the draft pick number (pick) and rushing yards (rush_yards), one of the success metrics. It also uses facet_wrap to separate the plots by player position, allowing for an easy comparison across different roles. This visualization is integral to understanding the correlation between draft pick number and player success, specifically how this relationship might vary across different positions. It provides a clear visual representation to address the first part of the research question, focusing on the significance of the correlation between draft pick number, player success metrics, and variations across different positions.
+
+```{r}
+#Statistical Modeling: Correlation and Regression Analysis
+
+cor_pick_rush <- cor.test(draft_data_clean$pick, draft_data_clean$rush_yards, use = "complete.obs")
+cor_pick_rec <- cor.test(draft_data_clean$pick, draft_data_clean$rec_yards, use = "complete.obs")
+cor_pick_def_sacks <- cor.test(draft_data_clean$pick, draft_data_clean$def_sacks, use = "complete.obs")
+
+# Print the results of the correlation tests
+print(paste("Correlation between draft pick and rushing yards: ", cor_pick_rush$estimate))
+print(paste("P-value:", cor_pick_rush$p.value))
+print(paste("Correlation between draft pick and receiving yards: ", cor_pick_rec$estimate))
+print(paste("P-value:", cor_pick_rec$p.value))
+print(paste("Correlation between draft pick and defensive sacks: ", cor_pick_def_sacks$estimate))
+print(paste("P-value:", cor_pick_def_sacks$p.value))
+
+# Fit a linear regression model for rush yards vs draft pick
+model_rush_yards <- lm(rush_yards ~ pick, data = draft_data_clean)
+
+# Print the summary of the regression model
+summary(model_rush_yards)
+```
+
+> The correlation tests show a very weak negative correlation between draft pick number and both rushing and receiving yards, which is not statistically significant. However, there is a moderate and statistically significant negative correlation between draft pick number and defensive sacks. The linear regression model for predicting rushing yards from the draft pick number is not statistically significant and explains none of the variability in rushing yards.
+
+> The analysis directly addresses the research question by examining if the draft pick number correlates with measurable success in the NFL, such as rushing yards, receiving yards, and defensive sacks. While a significant negative correlation with defensive sacks suggests that lower draft picks (which are considered more premier) tend to perform better in this metric, the lack of significant correlations with rushing and receiving yards implies that the draft pick number may not be a consistent predictor of success for these metrics across various positions. This indicates that other player attributes might also need to be considered to fully assess a player's potential success in the NFL.
+
+> Research Question 2. Are there any specific draft positions that are more likely to produce successful players than others?
+
+```{r}
+#Inference on Proportions
+
+success_threshold <- median(draft_data_clean$rush_yards, na.rm = TRUE)
+draft_data_clean$successful_player <- ifelse(draft_data_clean$rush_yards > success_threshold, 1, 0)
+
+
+success_proportion <- draft_data_clean %>%
+  group_by(position) %>%
+  summarise(
+    proportion_success = mean(successful_player),
+    n = n()
+  )
+
+print(success_proportion)
+```
+
+> The table lists NFL positions along with the proportion of players at each position who exceeded the median rushing yards, used as a criterion for success. For positions with a higher number of players (like DB and LB), there's a greater chance of players exceeding the success threshold. Positions with a proportion of zero indicate no players exceeded the median rushing yards, which may reflect the typical role of the position in the game. Positions with only one player (like G, T, TE, WR) provide limited data and thus, less reliable conclusions about success rates.
+
+> This part of the code defines a success criterion based on rushing yards and calculates the proportion of successful players in each position. It is instrumental in examining whether certain positions are more likely to yield successful players, thus addressing the latter part of your research question. By calculating these proportions, this analysis provides a statistical foundation to infer position-specific success rates, enhancing the understanding of how different positions correlate with the success rates of players in the NFL.
+
+> Research Question 3. Can we develop a predictive model to forecast a player's NFL success based on their draft position and other relevant factors?
+
+```{r}
+small_value <- 1e-6
+
+
+draft_data_clean <- draft_data_clean %>%
+  mutate(
+    rush_yards = ifelse(rush_yards <= 0, log1p(small_value), log1p(rush_yards)),
+    predicted_rush_yards = ifelse(predicted_rush_yards <= 0, log1p(small_value), log1p(predicted_rush_yards))
+  )
+
+
+draft_data_clean <- na.omit(draft_data_clean)
+
+
+plot_data <- draft_data_clean %>%
+  select(pick, rush_yards, predicted_rush_yards) %>%
+  pivot_longer(cols = c("rush_yards", "predicted_rush_yards"),
+               names_to = "type",
+               values_to = "yards")
+
+
+ggplot(plot_data, aes(x = pick, y = yards, color = type)) +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Observed vs Predicted Rushing Yards by Draft Pick",
+       x = "Draft Pick",
+       y = "Rushing Yards (log scale)")
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
