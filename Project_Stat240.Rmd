@@ -1,9 +1,11 @@
 ---
 title: "Project"
-author: "Dhaen Alkaabi"
+author: "Dhaen Alkaabi    Aidan Pierre-Louis    Luke Marini   Noah Eisenberg"
 output: html_document
-date: "2023-11-08"
+date: "2023-11-29"
 ---
+
+#### https://github.com/nflverse/nflverse-data
 
 ```{r setup, include=FALSE}
 library(ggplot2)
@@ -11,14 +13,42 @@ library(dplyr)
 library(openxlsx)
 library(tidyverse)
 library(kableExtra)
+library(dplyr)
+library(tidyr)
+library(grid)
+library(gridExtra)
+library(modelr)
 knitr::opts_chunk$set(echo = TRUE)
-draft_data <- read.xlsx("C:\\STAT240\\data\\draft_picks.xlsx")
-names(draft_picks)
+#draft_data <- read.xlsx("C:\\STAT240\\data\\draft_picks.xlsx") deprecating due to absolutepath
+#recommend to set working directory to current file location
 
-
+draft_data <- read.xlsx("../data/draft_picks.xlsx")
+player_data <- read_csv("../project/combine.csv")
 ```
 
-> Research Question 1: Do draft pick number and various player attributes, such as height, weight, and speed, exhibit a significant correlation towards a player's success in the NFL? And if so, which positions have the strongest and weakest correlations?
+# Research Question 1: Do draft pick number and various player attributes, such as height, weight, and speed, exhibit a significant correlation towards a player's success in the NFL and draft? And if so, which positions have the strongest and weakest correlations?
+
+```{r, eval = FALSE}
+player_data = player_data %>% rename(pfr_player_id= 'pfr_id', cfb_player_id= 'cfb_id', pfr_player_name= 'player_name')
+merge_data = right_join(player_data, draft_data)
+
+merge_attrs = merge_data %>% filter(!is.na(pick)) %>%
+  select(season, round, pick, team, pfr_player_name, position, age, ht, wt, forty, bench, vertical, broad_jump, cone, shuttle)
+```
+```{r, eval = FALSE}
+attrs <- c(merge_attrs$age, merge_attrs$ht, merge_attrs$wt, merge_attrs$forty, merge_attrs$bench, merge_attrs$vertical, merge_attrs$broad_jump, merge_attrs$cone, merge_attrs$shuttle)
+#plots <- list()
+for (attr in attrs) {
+  merge_attrs %>% ggplot(aes(x= pick,y= attr)) +
+    geom_point() +
+    geom_smooth()
+    #geom_abline(intercept= beta0, slope= beta1) # TODO regression calculation)
+  #plots <- append(plots, plot)
+  }
+#ggarrange(plots)
+```
+-Above 2 code chunks are work in progress and are not displaying plots at the moment.
+
 
 ```{r}
 #Data Cleaning and Wrangling
@@ -44,6 +74,8 @@ ggplot(draft_data_clean, aes(x = pick, y = rush_yards)) +
   theme_minimal() +
   labs(title = "Draft Pick vs Rush Yards by Position")
 ```
+
+
 
 > The plot is a collection of scatterplots, each representing a different position in the NFL, comparing draft pick numbers (x-axis) to rushing yards (y-axis). The points represent individual players, and the blue lines show the trend of rushing yards against draft picks within each position. Positions like DB and WR show a slight negative trend, suggesting higher draft picks typically have more rushing yards. Most positions, especially non-rushing ones like T and DT, show little to no trend, indicating draft pick number doesn't strongly correlate with rushing yards for those positions.
 
@@ -75,7 +107,7 @@ summary(model_rush_yards)
 
 > The analysis directly addresses the research question by examining if the draft pick number correlates with measurable success in the NFL, such as rushing yards, receiving yards, and defensive sacks. While a significant negative correlation with defensive sacks suggests that lower draft picks (which are considered more premier) tend to perform better in this metric, the lack of significant correlations with rushing and receiving yards implies that the draft pick number may not be a consistent predictor of success for these metrics across various positions. This indicates that other player attributes might also need to be considered to fully assess a player's potential success in the NFL.
 
-> Research Question 2. Are there any specific draft positions that are more likely to produce successful players than others?
+# Research Question 2. Are there any specific draft positions that are more likely to produce successful players than others?
 
 ```{r}
 #Inference on Proportions
@@ -94,9 +126,115 @@ success_proportion <- draft_data_clean %>%
 print(success_proportion)
 ```
 
+```{r}
+
+```
+
 > The table lists NFL positions along with the proportion of players at each position who exceeded the median rushing yards, used as a criterion for success. For positions with a higher number of players (like DB and LB), there's a greater chance of players exceeding the success threshold. Positions with a proportion of zero indicate no players exceeded the median rushing yards, which may reflect the typical role of the position in the game. Positions with only one player (like G, T, TE, WR) provide limited data and thus, less reliable conclusions about success rates.
 
 > This part of the code defines a success criterion based on rushing yards and calculates the proportion of successful players in each position. It is instrumental in examining whether certain positions are more likely to yield successful players, thus addressing the latter part of your research question. By calculating these proportions, this analysis provides a statistical foundation to infer position-specific success rates, enhancing the understanding of how different positions correlate with the success rates of players in the NFL.
+
+> Here I will dive in to the correlation between draft pick and success for the four main offensive skill positions in the NFL: Quarterback (QB), Running Back (RB), Wide Reciever (WR), and Tight End (TE). To create a metric to compute and compare success and compare , I am utilizing fantasy points, a scoring system that is commonly used to calcuate "points" based on a player's statistics. Below I evaluate if draft pick can be used to explain fantasy points using a linear regression model, while using a logarithmic transformation on fantasy points.
+
+```{r}
+draft_data = draft_data %>% replace(is.na(.), 0)
+qb = draft_data %>%
+  filter(position == "QB") %>%
+  select(round, pick, position, pass_yards, pass_tds, pass_ints, rush_yards, rush_tds, probowls, allpro) %>%
+  mutate(fantasy_points = pass_yards*0.25 + pass_tds*4 + pass_ints*-2 + rush_yards*0.1 + rush_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+rb = draft_data %>%
+  filter(position == "RB") %>%
+  select(round, pick, rush_yards, rush_tds, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = rush_yards*0.1 + rush_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+wr = draft_data %>%
+  filter(position == "WR") %>%
+  select(round, pick, rec_yards, rec_tds, receptions, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = receptions*0.5 + rec_yards*0.1 + rec_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+
+te = draft_data %>%
+  filter(position == "TE") %>%
+  select(round, pick, rec_yards, rec_tds, receptions, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = receptions*0.5 + rec_yards*0.1 + rec_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+qb_cor = cor(qb$pick, qb$log_fpoints)
+qb_lm = lm(log_fpoints ~ pick, data = qb)
+
+
+qb_plot = ggplot(qb, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm") + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Quarterbacks (r = -0.64)")
+
+rb_cor = cor(rb$pick, rb$log_fpoints)
+rb_lm = lm(log_fpoints ~ pick, data = rb)
+
+
+rb_plot = ggplot(rb, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm") + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Running Backs (r = -0.61)")
+
+
+wr_cor = cor(wr$pick, wr$log_fpoints)
+wr_lm = lm(log_fpoints ~ pick, data = wr)
+
+
+wr_plot = ggplot(wr, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm") + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Wide Recievers (r = -0.60)")
+
+te_cor = cor(te$pick, te$log_fpoints)
+te_lm = lm(log_fpoints ~ pick, data = te)
+
+
+te_plot = ggplot(te, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm") + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Tight Ends (r = -0.56)")
+
+tibble(qb_cor, rb_cor, wr_cor, te_cor)
+
+grid.arrange(qb_plot, rb_plot, wr_plot, te_plot, top = textGrob("NFL Players: Draft Pick vs Fantasy Points by Position"))
+```
+
+> The graphs show a similar trend among all four positions: A moderate negative correlation between draft pick and log(fantasy points), indicating that a higher draft pick does seem to correlate with more success in the NFL.
+
+```{r}
+qb = qb %>%
+  add_residuals(qb_lm)
+
+qb_resid = ggplot(qb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Quarterbacks") + geom_smooth(se=FALSE)
+
+rb = rb %>%
+  add_residuals(rb_lm)
+
+rb_resid = ggplot(rb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Running Backs")+ geom_smooth(se=FALSE)
+
+wr = wr %>%
+  add_residuals(wr_lm)
+
+wr_resid = ggplot(wr, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Wide Receivers") + geom_smooth(se=FALSE)
+
+te = te %>%
+  add_residuals(qb_lm)
+
+te_resid = ggplot(te, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Tight Ends") + geom_smooth(se=FALSE)
+
+grid.arrange(qb_resid, rb_resid, wr_resid, te_resid, top = textGrob("Residual Plots"))
+```
+
+ > The residual plots showcase a slight but consistent pattern that include positive residuals near the boundaries and negative residuals in near the middle, but overall the pattern does not seem too signficant and the linear model seems reasonable.
+
+
+> 
 
 > Research Question 3. Can we develop a predictive model to forecast a player's NFL success based on their draft position and other relevant factors?
 
@@ -107,7 +245,7 @@ small_value <- 1e-6
 draft_data_clean <- draft_data_clean %>%
   mutate(
     rush_yards = ifelse(rush_yards <= 0, log1p(small_value), log1p(rush_yards)),
-    predicted_rush_yards = ifelse(predicted_rush_yards <= 0, log1p(small_value), log1p(predicted_rush_yards))
+    predicted_rush_yards = ifelse(rush_yards <= 0, log1p(small_value), log1p(rush_yards))
   )
 
 
@@ -127,20 +265,4 @@ ggplot(plot_data, aes(x = pick, y = yards, color = type)) +
   labs(title = "Observed vs Predicted Rushing Yards by Draft Pick",
        x = "Draft Pick",
        y = "Rushing Yards (log scale)")
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
 ```
