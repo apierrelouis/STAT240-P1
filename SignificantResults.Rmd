@@ -1,0 +1,477 @@
+---
+title: "SignificantResults"
+output: html_document
+date: "2023-12-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(kableExtra)
+```
+
+```{r}
+# THIS CODE CHUNK CREATES THE DATA SET WE ARE GOING TO WORK WITH TO LOOK AT CORRELATIONS
+
+combine = read_csv("../data/combine.csv")
+players = read_csv("../data/draft_picks.csv")
+
+combine = combine %>%
+  select(draft_year, draft_team, draft_round, draft_ovr, player_name, pos, ht, wt, forty) %>%
+  drop_na() 
+
+players = players %>%
+  select(season, round, pick, team, pfr_player_name, position, age, hof, allpro, probowls) %>%
+  drop_na() %>%
+  filter(season >= 2000) 
+
+names(players) = c("season", "round", "pick", "team", "player", "position", "age", "HOF", "AP", "PB")
+names(combine) = c("season", "team", "round", "pick", "player", "position", "height", "weight", "speed")
+
+players = players %>%
+  select(player, season, round, pick, position, age, HOF, AP, PB) %>%
+  drop_na()
+
+combine = combine %>%
+  select(player, season, round, pick, position, height, weight, speed) %>%
+  drop_na()
+
+data = players %>%
+  left_join(combine, by = c("player", "season", "round", "pick", "position")) %>%
+  drop_na() %>%
+  distinct() %>%
+  filter(position == 'WR' | position == 'QB' | position == 'TE' | position == 'RB') 
+
+data = data %>%
+  mutate(HOFscore = case_when(
+    HOF == 'FALSE' ~ 0,
+    HOF == 'TRUE' ~ 10
+  )) %>%
+  mutate(success_score = HOFscore + 3 * AP + PB) %>%
+  select(everything(), -HOFscore)
+```
+
+
+> SIGNIFICANT RESULTS FOR QUARTERBACKS:
+
+```{r}
+# looking at proportions of successful qbs based on whether they were drafted top100 or not, and top32 or not
+quarterbacks = data %>%
+  filter(position == 'QB') 
+
+top100 = quarterbacks %>%
+  filter(pick <= 100) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notTop100 = quarterbacks %>%
+  filter(pick > 100) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(top100, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted top 100")
+ggplot(notTop100, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted outside the top 100")
+
+firstRound = quarterbacks %>%
+  filter(pick <= 32) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notFirstRound = quarterbacks %>%
+  filter(pick > 32) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(firstRound, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted in the first round")
+ggplot(notFirstRound, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted outside the first round")
+```
+
+```{r}
+#testing for significance for only first round qbs: Ho: Psuccess = 0.096, Ha: Psuccess > 0.096
+#this can be considered binomial because there are only 2 options: successful or not, each qb's success is not determined by any other qb's success, sample size is pre-specified, and we are assuming each first round qb has the same probability of becoming successful
+
+n = 57
+p = 0.096
+mean = n * p
+sd = sqrt(mean * (1-p))
+
+pval = (1 - pnorm(13, mean, sd))
+pval
+
+n = 107
+p = 0.096
+mean = n * p
+sd = sqrt(mean * (1-p))
+
+pval = (1 - pnorm(17, mean, sd))
+pval
+```
+
+> A large portion of successful quarterbacks have been drafted earlier. Out of 219 quarterbacks, 21 have been considered successul (9.6%). 
+
+>48.9% of QBs were selected in the top 100, and 16.8% of them were successful.
+>26% of QBs were selected in the first round, and 24.6% of them were successful.
+
+>There is extremely strong evidence (p value = 0.0004, one-sided binomial test) that in the long run a quarterback drafted in the first round is more likely to be successful than a quarterback not drafted in the first round.
+
+>There is also strong evidence (p value = 0.014, one-sided binomial test) that in the long run a quarterback drafted in the top 100 picks is more likely to be successful than a quarterback not drafted in the top 100.
+
+
+> SIGNIFICANT RESULTS FOR WIDE RECEIVERS:
+
+```{r}
+wr = data %>%
+  filter(position == 'WR')
+
+firstRoundWR = wr %>%
+  filter(pick <= 32)
+
+#ggplot(wr, aes(x = weight, y = success_score)) + geom_point() + geom_smooth(alpha = 0.3) + geom_hline(yintercept = 3)
+
+
+
+x = firstRoundWR$weight
+y = firstRoundWR$success_score
+
+wr_weight_lm = lm(success_score ~ weight, firstRoundWR)
+summary(wr_weight_lm)
+
+firstRoundWR = firstRoundWR %>%
+  mutate(predicted_success = -20.47 + .109 * weight, residual = case_when(
+    predicted_success <= 0 ~ 0,
+    predicted_success > 0 ~ success_score - predicted_success))
+
+ggplot(firstRoundWR, aes(x = weight, y = residual)) + geom_point()
+
+sub200lbFRWR = firstRoundWR %>%
+  filter(weight <= 200) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+above200lbFRWR = firstRoundWR %>%
+  filter(weight > 200) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+firstRoundWR %>%
+  filter(success_score >= 3) %>%
+  print(n = Inf)
+```
+
+```{r}
+ggplot(wr, aes(x = height, y = success_score)) + geom_point() + geom_smooth() + geom_hline(yintercept = 3)
+ggplot(firstRoundWR, aes(x = height, y = success_score)) + geom_point() + geom_smooth() + geom_hline(yintercept = 3)
+```
+
+```{r}
+nrow(sub200lbFRWR)
+nrow(above200lbFRWR)
+```
+
+> Out of 587 wide receivers, 35 have been considered successful (6%)
+
+> Weight is a very big factor in wide receiver success, especially first round wide receivers
+
+> Here is a graph of weight vs success score among all wide receivers drafted in the first round
+
+```{r}
+ggplot(firstRoundWR, aes(x = weight, y = success_score)) + geom_point(alpha = 0.3) + geom_smooth() + geom_hline(yintercept = 3)
+```
+
+> Here are two box plots showing successful vs non-successful first round wide receivers for those above and below 200 pounds
+
+```{r}
+ggplot(sub200lbFRWR, aes(x = suc)) + geom_bar()
+ggplot(above200lbFRWR, aes(x = suc)) + geom_bar()
+```
+
+```{r}
+#test for significance
+n = 45
+p = .166
+mean = n*p
+sd = sqrt(mean (1 - p))
+
+pval = (1 - pnorm(12, mean, sd))
+pval
+
+```
+
+> While it seems obvious that in football, the bigger players will be more successful. However, there have been 35 wide receivers drafted in the first round that are sub-200 pounds, and 49 that are above 200 pounds, a noticeable difference but clearly teams are comfortable drafting smaller wide receivers in the first round
+> Out of the 49 wide receivers drafted in the first round above 200 pounds, 13 have been successful (26.5%)
+> While out of the 35 wide receivers drafted in the first round that are sub-200 pounds, only one was successful (2.9%)
+> There is extremely strong evidence (pval < 1e-6, one sided test) that a first round receiver that weighs over 200 pounds will be more successful than the average first round wide receiver
+
+> RUNNING BACKS:
+
+```{r}
+rb = data %>%
+  filter(position == 'RB')
+
+ggplot(rb, aes(x = pick, y = success_score)) + geom_point(alpha = 0.3) + geom_smooth() + geom_hline(yintercept = 3)
+
+top50rbs = rb %>%
+  filter(pick <= 50) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notTop50 = rb %>%
+  filter(pick > 50) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+```
+
+> Clearly from this graph it shows that draft pick is a massive factor in determining how successful a running back will be in the NFL. However, unlike quarterbacks, if we narrow the sample to only to top50 running backs, we find that other factors contribute as well. In our sample, we have 360 total running backs with 31 being successful (8.6%)
+
+```{r}
+ggplot(notTop50, aes(x = suc)) + geom_bar()
+ggplot(top50rbs, aes(x = suc)) + geom_bar()
+```
+
+> There are 71 running backs who were drafted top 50 and 18 were successful. Of running backs were drafted top 50, 25.3% were successful.
+
+```{r}
+top50rbsSpeedFit = top50rbs %>%
+  filter(speed <= 4.6, speed >= 4.4) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+  
+speedfit = rb %>%
+  filter(speed <= 4.6, speed >= 4.4) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+```
+
+> However, we can take this a step farther and show that among these top50 running backs, speed plays a huge factor. 
+
+```{r}
+ggplot(top50rbs, aes(x = suc)) + geom_bar() + ggtitle("all top 50 rbs")
+ggplot(speedfit, aes(x = suc)) + geom_bar() + ggtitle("all rbs 4.4 - 4.6")
+ggplot(top50rbsSpeedFit, aes(x = suc)) + geom_bar() + ggtitle("top 50 rbs with 4.4 - 4.6")
+```
+
+> 261/360 of all running backs (72.5%) run between a 4.4 and 4.6 forty yard dash. Looking at our top 50 rbs, 52/71 run between a 4.4 and 4.6 forty yard dash (73.2%). So, the proportions are not much different, it seems that running between a 4.4 and 4.6 does not influence where a player gets drafted. But, when you combine the two, there is clear correlation.
+
+```{r}
+# probability that a rb BOTH: drafted top 50 AND between 4.4 - 4.6 forty more likely to succeed that those without both
+otherRb = rb %>%
+  filter((pick > 50 | speed < 4.4 | speed > 4.6) & success_score >=3)
+
+nrow(otherRb)
+
+n = 52
+p = .086
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval1 = 1 - pnorm(14, mean, sd)
+pval1
+
+#top50nonspeedFit %>%
+  #filter(success_score >= 3)
+
+#nrow(top50nonspeedFit)
+
+n = 52
+p = .086
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval2 = 1 - pnorm(14, mean, sd)
+pval2
+
+betweenspeed = rb %>%
+  filter(speed <= 4.6, speed >= 4.4, success_score >= 3)
+nrow(betweenspeed)
+
+n = 52
+p = .086
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval3 = 1 - pnorm(14, mean, sd)
+pval3
+
+nonSpeedFit = rb %>%
+  filter(speed < 4.4 | speed > 4.6) %>%
+  filter(success_score >= 3)
+
+nrow(nonSpeedFit)
+
+n = 261
+p = .086
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval4 = 1 - pnorm(24, mean, sd)
+pval
+```
+
+> Out of our 360 running backs, 308 of them did not meet both of the criteria: drafted top 50 and between 4.4-4.6 forty. Only 5.2% were successful. There is extremely strong evidence (pval 0, one sided test) that a running back who meets both those criteria is more likely to be successful than one who doesn't. Taking it a step further, there is extremely strong evidence (pval 0, one sided test) that a running back who meets both those criteria is more likely to be successful than a running back taken outside the top 50 but running between a 4.4 and 4.6 yard forty. Taking it one more step further, there is still extremely strong evidence (pval < 1e-13, one sided test) that a running back who was drafted top50 is more likely to be successful if they run between a 4.4 and 4.6 forty than a running back who was drafted top50 but doesn't run between a 4.4 and 4.6 forty.
+
+> TIGHT ENDS:
+
+```{r}
+te = data %>%
+  filter(position == 'TE')
+
+top100te = te %>%
+  filter(pick <= 100)
+```
+
+> Out of 239 tight ends in our sample, 12 were considered successful (5%)
+
+```{r}
+ggplot(top100te, aes(x = pick, y = success_score)) + geom_point(alpha = 0.3) + geom_smooth() + geom_hline(yintercept = 3)
+```
+
+> Clearly, draft pick has an influence. 101 tight ends were picked in the top 100 and 11 of them were sucessful (10.7%). Out of tight ends not picked in the top 100 only 1 out of 138 were succesful(0.7%). 
+
+```{r}
+top100te = top100te %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ntop100te = te %>%
+  filter(pick > 100) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(ntop100te, aes(x = suc)) + geom_bar() + ggtitle("not top 100")
+ggplot(top100te, aes(x = suc)) + geom_bar() + ggtitle("top 100")
+```
+
+> Given this disparity, we are going to look exclusively at tight ends drafted in the top 100. Unlike other positions, we can keep going and create a very nice mold for player success using all 3 of height, weight, and speed. 
+
+> The notable criteria is that the tight must be: between 6'5-6'6, 250-265 lbs, and 4.5 - 4.8 forty time.
+
+```{r}
+criteria = top100te %>%
+  filter(height %in% c("6-5", "6-6"), weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8)
+
+criteriaALL = te %>%
+  filter(pick > 100, height %in% c("6-5", "6-6"), weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8)
+
+nrow(criteriaALL)
+
+```
+
+> It might seem quite obvious that a player who is big (6'5 or 6'6, 250-265 pounds) AND fast (sub 4.8 at that size) will be more successful and this is a factor as to why they were drafted top 100 in the first place. However, 48 tight ends met that criteria and 27 of them were drafted top 100 (56.3%). This shows that more tight ends that fit this criteria end up going top 100 in the draft than those drafted outside the top 100, but the disparity is not significant. Here the disparity is shown
+
+```{r}
+c = te %>%
+  filter(height %in% c("6-5", "6-6"), weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8) %>%
+  mutate(top_100 = case_when(
+    pick <= 100 ~ 'YES',
+    pick > 100 ~ 'NO'
+  ))
+
+ggplot(c, aes(x = top_100)) + geom_bar()
+```
+
+> Now here is that same disparity, but with the proportion that were successful
+
+```{r}
+criteria = criteria %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+criteriaALL = criteriaALL %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(criteria, aes(x = suc)) + geom_bar() + ggtitle("top 100")
+ggplot(criteriaALL, aes(x = suc)) + geom_bar() + ggtitle("top 100")
+```
+
+> Here you can see that of the 27 tight ends that met the criteria drafted top 100, 7 were succesful. Of the 21 that were not drafted top 100, 0 were succesful. So, being big and fast is NOT necessarily a factor on its own, but becomes a significant factor among the top 100 draft picks. 
+
+> Now we will test for significance against combinations that don't meet this criteria
+
+> Tight ends that meet the other3 criteria but were not drafted top 100: p val 0
+
+```{r}
+df1 = te %>%
+  filter(pick <= 100, weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8, height %in% c("5-11", "6-0", "6-1", "6-2", "6-3", "6-4", "6-7", "6-8"), success_score >= 3)
+
+#1/24 successful
+
+n = 27
+p = 1 / 24
+mean = n * p
+sd = sqrt(mean (1 - p))
+pval = 1 - pnorm(6, mean, sd)
+pval
+```
+
+> Tight ends that meet the other 3 criteria but were not 6'5 or 6'6: p val < 1 e -6
+
+```{r}
+df2 = te %>%
+  filter(pick <= 100, (weight < 250 | weight > 265), speed >= 4.5, speed <= 4.8, height %in% c("6-5", "6-6"), success_score >= 3)
+
+#1/8 successful
+
+n = 27
+p = 1 / 8
+mean = n * p
+sd = sqrt(mean (1 - p))
+pval = 1 - pnorm(6, mean, sd)
+pval
+
+```
+
+> Tight ends that meet the other 3 criteria but were not between 250-265 lbs: p val .002
+
+```{r}
+df3 = te %>%
+  filter(pick <= 100, weight >= 250, weight <= 265, (speed < 4.5 | speed > 4.8), height %in% c("6-5", "6-6"), success_score >= 3)
+
+#1/7 successful
+
+n = 27
+p = 1 / 7
+mean = n * p
+sd = sqrt(mean (1 - p))
+pval = 1 - pnorm(6, mean, sd)
+pval
+
+```
+
+> Tight ends that meet the other 3 criteria but did not run between a 4.5 and 4.8 40: p val .01
+
+> P values were less than .01 for tight ends meeting 3/4 of those criteria but missing one, for all 4 of the one criteria being missed. This shows that the combination of all 3 criteria is key for predicting tight end success.
+
+> Summary:
+> For quarterbacks, there seemed to be little correlation between height/weight/speed and success in the NFL. The only correlation was between draft picks, which was strong. Quarterbacks had a much higher chance of being successful in the NFL if they were drafted in the top 100, and even higher if they were drafted in the first round (top 32).
+> For wide receivers, draft pick and weight seem to be the biggest factors in leading to NFL success. First round wide receivers that weigh 200+ pounds have a very strong likelihood of becoming succesful. 
+> For running backs, draft pick and speed seem to be the biggest factors in leading to NFL success. Running backs drafted top 50 that run between a 4.4 and 4.6 forty yard dash have a very strong likelihood of becoming successful.
+> For tight ends, draft pick, weight, height, and speed are all important factors in leading to NFL success. Tight ends drafted top 100 that are 6'5 or 6'6, between 250-265 pounds, and run between a 4.5 and 4.8 forty have a very strong likelihood in leading to NFL success.
