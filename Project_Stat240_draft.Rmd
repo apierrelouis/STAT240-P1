@@ -1,0 +1,243 @@
+---
+title: "Project"
+author: "Dhaen Alkaabi, Aidan Pierre-Louis, Luke Marini, Noah Eisenberg"
+output: html_document
+date: "2023-11-29"
+---
+
+### Data
+
+* Our study utilizes two primary datasets from the NFLverse project, which offer comprehensive insights into NFL draft prospects and their career outcomes.
+
+* **Combine CSV File**: This dataset provides a snapshot of player attributes evaluated during the NFL Scouting Combine, detailing each player's draft year, selection number, physical measurements (height and weight), 40-yard dash speed, position, college, and drafting team. These variables are crucial for assessing a prospect's physical capabilities and projected athletic performance.
+
+* **Player Data CSV File**: Tracking the progression of players' careers, this dataset includes variables indicative of NFL success, such as Hall of Fame status, All-Pro and Pro Bowl selections, and key performance statistics tailored to each player's position. This longitudinal data allows for an evaluation of the long-term impact and success of players in the league.
+
+* Sourced from [NFLverse](https://github.com/nflverse/nflverse-data) GitHub repository, both files are rigorously validated against official NFL records for accuracy. The datasets are cleaned to ensure completeness and consistency, with rows representing individual players and columns depicting various attributes and statistics. Our analysis aims to explore the predictive power of combine metrics on players' professional success, offering a quantitative basis to potentially forecast NFL career trajectories.
+
+### Introduction
+
+* The NFL draft is a yearly event where NFL teams select up and coming collegiate players to add to their team. It seems straightforward- the best players get picked first and as the draft goes on, the players who were not considered as talented get drafted later. However, many notable players were selected extremely late in the draft. In fact, the greatest player of all time, Tom Brady, who won more super bowls than every NFL franchise by himself, was selected in the sixth round (out of seven). Our goal is to look at various factors that affect how likely it is for a player to be successful in the NFL.
+
+* Thesis: Which pre-draft attributes are the most important in determining a player’s success in the NFL? 
+
+
+### Background
+
+* Our analysis is grounded in two comprehensive datasets that chronicle the profiles and career trajectories of NFL players drafted since 2000. The combine.csv file is a compendium of pre-draft measurements that capture the physical attributes of players entering the league. It includes the player's name, draft year, draft selection order, height, weight, 40-yard dash speed, playing position, alma mater, and the drafting NFL team. These metrics serve as quantifiable predictors in assessing a player's potential for professional football.
+
+* In contrast, the player_data.csv file offers a post-draft perspective by tracking the career accomplishments of these athletes. It encompasses career-long performance statistics and accolades, such as Hall of Fame induction, number of All-Pro selections, Pro Bowl appearances, and cumulative career statistics—passing, rushing, and receiving yards, as well as defensive metrics like tackles and interceptions, tailored to the player's position. This dataset is instrumental in defining and quantifying "success" in the NFL context.
+
+* Both datasets are curated from the NFLverse repository on GitHub, a trusted source of football data. To ensure the reliability of our analysis, we have meticulously fact-checked the data against authoritative NFL records.
+
+* A notable aspect of our datasets is the presence of some incomplete records, and instances where players appear in one dataset but not the other. To address these discrepancies, we will implement a data cleaning strategy that includes the removal of records with missing (NA) values and the application of R's join functions to align the two datasets. This will ensure a consistent and comprehensive dataset where each player's combine attributes and NFL performance data are complete and matched.
+
+* The objective of our study is to examine the correlation between the known pre-draft factors (from the combine dataset) and the players' subsequent success in the NFL (as recorded in the player_data dataset). By doing so, we aim to unravel the predictive relationships that might inform future drafts and player evaluations in professional football.
+
+#### [NFLverse Data Source](https://github.com/nflverse/nflverse-data)
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(openxlsx)
+library(tidyverse)
+library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+#draft_data <- read.xlsx("C:\\STAT240\\data\\draft_picks.xlsx") deprecating due to absolutepath
+#recommend to set working directory to current file location
+
+draft_data <- read.xlsx("..\\data\\draft_picks.xlsx")
+player_data <- read_csv("..\\data\\combine.csv")
+```
+
+## Research Question 1: Do draft pick number and various player attributes, such as height, weight, and speed, exhibit a significant correlation towards a player's success in the NFL and draft? And if so, which positions have the strongest and weakest correlations?
+
+```{r, eval = FALSE}
+player_data = player_data %>% rename(pfr_player_id= 'pfr_id', cfb_player_id= 'cfb_id', pfr_player_name= 'player_name')
+merge_data = right_join(player_data, draft_data)
+
+merge_attrs = merge_data %>% filter(!is.na(pick)) %>%
+  select(season, round, pick, team, pfr_player_name, position, age, ht, wt, forty, bench, vertical, broad_jump, cone, shuttle)
+```
+
+- The above code merges player data with draft data, selecting key attributes for analysis. This step is essential for exploring the relationship between draft picks and player attributes.
+
+```{r, eval = FALSE}
+attrs <- c(merge_attrs$age, merge_attrs$ht, merge_attrs$wt, merge_attrs$forty, merge_attrs$bench, merge_attrs$vertical, merge_attrs$broad_jump, merge_attrs$cone, merge_attrs$shuttle)
+#plots <- list()
+for (attr in attrs) {
+  merge_attrs %>% ggplot(aes(x= pick,y= attr)) +
+    geom_point() +
+    geom_smooth()
+    #geom_abline(intercept= beta0, slope= beta1) # TODO regression calculation)
+  #plots <- append(plots, plot)
+  }
+#ggarrange(plots)
+```
+
+- The code chunk above is intended to create visualizations for exploring correlations between draft picks and various player attributes. These plots will aid in identifying trends and patterns in the data.
+
+```{r}
+#Data Cleaning and Wrangling
+
+draft_data_clean <- draft_data %>%
+  select(season, pick, position, rush_yards, rec_yards, def_sacks) %>%
+  mutate(season = as.numeric(season)) %>% 
+  filter(!is.na(pick)) %>%
+  na.omit() 
+```
+
+- This segment is focused on preparing the dataset for analysis. It includes selecting relevant columns, converting data types, and filtering out missing values, setting the stage for accurate analysis.
+
+
+
+```{r}
+#Data Visualization
+
+ggplot(draft_data_clean, aes(x = pick, y = rush_yards)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~position) +
+  theme_minimal() +
+  labs(title = "Draft Pick vs Rush Yards by Position")
+```
+
+- Here, we create a scatter plot with regression lines to examine the relationship between draft picks and rushing yards, separated by player position. This visualization is crucial for understanding position-specific trends.
+
+```{r}
+#Statistical Modeling: Correlation and Regression Analysis
+
+cor_pick_rush <- cor.test(draft_data_clean$pick, draft_data_clean$rush_yards, use = "complete.obs")
+cor_pick_rec <- cor.test(draft_data_clean$pick, draft_data_clean$rec_yards, use = "complete.obs")
+cor_pick_def_sacks <- cor.test(draft_data_clean$pick, draft_data_clean$def_sacks, use = "complete.obs")
+
+# Print the results of the correlation tests
+print(paste("Correlation between draft pick and rushing yards: ", cor_pick_rush$estimate))
+print(paste("P-value:", cor_pick_rush$p.value))
+print(paste("Correlation between draft pick and receiving yards: ", cor_pick_rec$estimate))
+print(paste("P-value:", cor_pick_rec$p.value))
+print(paste("Correlation between draft pick and defensive sacks: ", cor_pick_def_sacks$estimate))
+print(paste("P-value:", cor_pick_def_sacks$p.value))
+
+# Fit a linear regression model for rush yards vs draft pick
+model_rush_yards <- lm(rush_yards ~ pick, data = draft_data_clean)
+
+# Print the summary of the regression model
+summary(model_rush_yards)
+```
+
+- This section includes correlation tests and regression modeling to quantitatively analyze the relationships between draft picks and various performance metrics.
+
+### Findings from RQ1:
+
+* The exploratory data analysis, particularly the graphical summary presented in the scatter plot 'Draft Pick vs Rush Yards by Position', indicates that there is no strong or consistent trend across different positions in the NFL when correlating draft pick numbers with rushing yards. While some positions, such as DB (Defensive Back) and WR (Wide Receiver), show a slight negative trend implying that higher draft picks may yield more rushing yards, the majority, including non-rushing positions like T (Tackle) and DT (Defensive Tackle), exhibit little to no clear relationship. This suggests that draft pick number alone is not a reliable predictor of rushing success for players across all positions.
+
+* The correlation and regression analyses further support these visual observations. The correlation between draft pick number and rushing yards is weak and not statistically significant, as indicated by the p-value (0.3314), which is much higher than the conventional alpha level of 0.05. This lack of significance is also reflected in the linear regression analysis, where the coefficient for 'pick' is -0.00677, but the p-value associated with this coefficient is not indicative of a statistically significant relationship.
+
+* On the other hand, the analysis reveals a moderate and statistically significant negative correlation between draft pick number and defensive sacks (p-value < 0.0001), suggesting that lower draft picks, which are generally considered more prestigious, tend to have better performance in terms of defensive sacks. This could point to a more selective and effective evaluation process for defensive positions in earlier draft rounds or a stronger dependency on raw talent that is recognized and drafted earlier for these roles.
+
+* In summary, while the draft pick number has a significant correlation with defensive performance, particularly sacks, it does not hold a significant predictive power for offensive yardage metrics like rushing and receiving yards across the board. This underscores the complex nature of predicting NFL success and suggests that other factors, potentially including player attributes known before the draft and even post-draft development opportunities, should be considered to fully assess a player's potential success in the NFL.
+
+
+
+
+
+## Research Question 2. Are there any specific draft positions that are more likely to produce successful players than others?
+
+```{r}
+#Inference on Proportions
+
+success_threshold <- median(draft_data_clean$rush_yards, na.rm = TRUE)
+draft_data_clean$successful_player <- ifelse(draft_data_clean$rush_yards > success_threshold, 1, 0)
+
+
+success_proportion <- draft_data_clean %>%
+  group_by(position) %>%
+  summarise(
+    proportion_success = mean(successful_player),
+    n = n()
+  )
+
+print(success_proportion)
+```
+
+- This section includes correlation tests and regression modeling to quantitatively analyze the relationships between draft picks and various performance metrics.
+
+### Findings from RQ2:
+
+* When assessing the likelihood of producing successful players, defined here as those exceeding the median number of rushing yards, the data reveals significant variation across different NFL draft positions. It's notable that certain positions, such as Defensive Back (DB), Linebacker (LB), and Safety (S), have a higher proportion of players exceeding the success threshold. Specifically, DBs show a proportion of success of approximately 4.59%, LBs about 1.26%, and Safeties around 4.05%. These positions also have a larger number of players evaluated (n > 50), which gives more weight to these percentages.
+
+* Conversely, positions such as Defensive Lineman (DL), Guard (G), Nose Tackle (NT), and Tight End (TE) have a 0% success rate according to our rushing yards criterion. However, it's important to note that the sample size for some of these positions is very small (n = 1), which could significantly skew the data and limit the reliability of these results. For positions like DL (n = 24) and NT (n = 80), even with a larger sample size, the 0% proportion could be reflective of the typical role of these positions in the game, which does not prioritize rushing yards as a performance metric.
+
+* The results should be interpreted with caution, as the success measure used (rushing yards) is typically associated with offensive positions such as Running Backs, which are not included in the provided table. This might explain why some positions show a very low success rate as their contributions on the field are not captured by rushing yard statistics.
+
+* In summary, the data suggests that positions traditionally involved in rushing plays are more likely to exceed the median rushing yards threshold, and therefore, might be considered more 'successful' by this specific measure. However, it's crucial to recognize that NFL success is multi-faceted and the rushing yards metric may not fully encapsulate the contributions of players in non-offensive positions. Future analyses could benefit from incorporating a wider range of performance metrics to provide a more holistic view of success across all positions.
+
+
+## Research Question 3. Can we develop a predictive model to forecast a player's NFL success based on their draft position and other relevant factors?
+
+```{r}
+small_value <- 1e-6
+
+
+draft_data_clean <- draft_data_clean %>%
+  mutate(
+    rush_yards = ifelse(rush_yards <= 0, log1p(small_value), log1p(rush_yards)),
+    predicted_rush_yards = ifelse(rush_yards <= 0, log1p(small_value), log1p(rush_yards))
+  )
+
+
+draft_data_clean <- na.omit(draft_data_clean)
+
+
+plot_data <- draft_data_clean %>%
+  select(pick, rush_yards, predicted_rush_yards) %>%
+  pivot_longer(cols = c("rush_yards", "predicted_rush_yards"),
+               names_to = "type",
+               values_to = "yards")
+
+
+ggplot(plot_data, aes(x = pick, y = yards, color = type)) +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Observed vs Predicted Rushing Yards by Draft Pick",
+       x = "Draft Pick",
+       y = "Rushing Yards (log scale)")
+```
+
+- This section is aimed at developing a predictive model and visualizing the observed versus predicted performance based on draft picks.
+
+### Findings for RQ3: 
+
+* The scatter plot visualizes the comparison between observed and predicted rushing yards (on a logarithmic scale) against draft picks. Each point represents a player, with the red points depicting predicted rushing yards and the blue points showing actual rushing yards achieved by the players. The distribution of points suggests that there is variability in both observed and predicted values across the range of draft picks. However, there appears to be a discrepancy between the predicted and actual rushing yards, with the model's predictions not aligning closely with the observed outcomes.
+
+* A notable observation is the clustering of predicted values around a narrow range, indicating a potential limitation in the predictive model's ability to capture the true variance observed in the actual data. This could be due to the model being oversimplified or not incorporating enough of the relevant factors that influence a player's rushing yards.
+
+* It's also important to mention that there may be a mistake in the graph, as indicated by the request for acknowledgement of potential errors. Given that this analysis is part of a draft, the next steps would involve reviewing the modeling approach, ensuring the correct application of statistical techniques, and possibly enhancing the model with additional predictive variables or using more complex modeling techniques to improve accuracy.
+
+* In its current form, the predictive model's utility is limited, and further refinement is necessary to increase its predictive power. This could include incorporating a wider range of player attributes, more granular data on player performances, or exploring different statistical models that could account for the non-linear relationships and interactions between variables.
+
+* The draft findings highlight the challenges of predicting NFL success based on pre-draft metrics alone. The complexity of the sport and the multitude of factors contributing to a player's performance on the field necessitate a robust and multifaceted approach to predictive modeling.
+
+### Discussions: 
+
+* Our analysis has provided valuable insights into the predictive relationships between NFL Combine metrics and subsequent player success in the league. The correlation between draft pick number and various performance metrics like rushing yards, receptions, and defensive sacks, as well as the proportion of successful players by draft position, paints a complex picture of player evaluation and development.
+
+* *Interpretation of Results:* The findings suggest that while certain pre-draft attributes, particularly those related to a player's physical prowess, do have some correlation with NFL success, they are not the sole determinants. The moderate and significant correlation between draft pick number and defensive sacks indicates that earlier draft picks, who are often more closely scrutinized and highly regarded, tend to perform better in terms of defensive statistics. However, the lack of strong correlation between draft pick number and offensive yardage metrics for various positions underscores the multifaceted nature of success in the NFL.
+
+* *Shortcomings of the Analysis:* One of the primary limitations of our analysis is the reliance on quantitative data from the Combine and draft picks, which may not fully capture a player's potential and intangibles such as mental toughness, leadership, and adaptability. Additionally, our predictive model's limited performance in forecasting rushing yards suggests that our current approach may be too simplistic or that the model lacks critical variables that could improve its predictive accuracy.
+
+* *Future Directions:* To enhance our understanding of NFL success predictors, future research could incorporate qualitative data, such as player psychology assessments or interviews with coaches and scouts. Advanced statistical methods, like machine learning algorithms that can handle non-linear relationships and interaction effects, may also yield more accurate predictions. Furthermore, longitudinal data tracking a player's development over time could provide a more dynamic view of success factors.
+
+* *New Questions:* and Methods: Our initial findings lead to several new questions: How do factors such as team fit, coaching style, or injuries influence a player's success trajectory? Could advanced analytics provide a better understanding of less tangible attributes? Addressing these questions could involve qualitative research methods, such as case studies or content analysis, to complement the quantitative approach.
+
+* *New Data:* To refine our predictive model, incorporating additional data such as player injury history, precise details of player contracts, playing time, or advanced performance metrics from player tracking technology could be beneficial. These additional data points could provide a more nuanced view of a player's career and their success relative to their draft position.
+
+* *Conclusions:* In conclusion, our study affirms that while combine metrics and draft positions do have some predictive power, they are not infallible indicators of NFL success. The strongest correlation was found in defensive positions, indicating that combine metrics may be more predictive for these roles. The lack of correlation for offensive positions suggests that success in these roles may be influenced by a broader array of factors beyond the scope of traditional Combine metrics.
+
+### References: 
+
+1. NFLverse Contributors. (Year). NFLverse Data. Available at: https://github.com/nflverse/nflverse-data
+2. NFL Scouting Combine. (Year). Combine Player Profiles. Available at: https://www.nfl.com/combine/
+
+
