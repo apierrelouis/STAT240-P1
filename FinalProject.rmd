@@ -590,12 +590,12 @@ qb_resid = ggplot(qb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yint
 rb = rb %>%
   add_residuals(rb_lm)
 
-rb_resid = ggplot(rb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Running Backs")+ geom_smooth(se=FALSE, method = 'gam', formula = 'y ~ s(x, bs = "cs")')
+rb_resid = ggplot(rb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Running Backs")+ geom_smooth(se=FALSE, method = 'loess', formula = 'y ~ x')
 
 wr = wr %>%
   add_residuals(wr_lm)
 
-wr_resid = ggplot(wr, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Wide Receivers") + geom_smooth(se=FALSE, method = 'gam', formula = 'y ~ s(x, bs = "cs")')
+wr_resid = ggplot(wr, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Wide Receivers") + geom_smooth(se=FALSE, method = 'loess', formula = 'y ~ x')
 
 te = te %>%
   add_residuals(qb_lm)
